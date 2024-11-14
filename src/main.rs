@@ -1,198 +1,189 @@
-use cocoa::appkit::{NSApp, NSApplication, NSApplicationActivationPolicy, NSBackingStoreType, NSMenu, NSMenuItem, NSView, NSWindow, NSWindowStyleMask};
-use objc::runtime::{Class, Object, Sel, BOOL};
-use objc::declare::ClassDecl;
-use objc::{class, msg_send, sel, sel_impl};
-use cocoa::base::{nil, YES, NO, id};
-use cocoa::foundation::{NSAutoreleasePool, NSPoint, NSRect, NSSize, NSString, NSUInteger};
-use bitflags::bitflags;
+use std::cell::{OnceCell, RefCell};
 
-bitflags! {
-    pub struct NSTrackingAreaOptions: NSUInteger {
-        const MouseEnteredAndExited = 0x01;
-        const MouseMoved = 0x02;
-        const CursorUpdate = 0x04;
-        const ActiveWhenFirstResponder = 0x10;
-        const ActiveInKeyWindow = 0x20;
-        const ActiveInActiveApp = 0x40;
-        const ActiveAlways = 0x80;
-        const AssumeInside = 0x100;
-        const InVisibleRect = 0x200;
-        const EnabledDuringMouseDrag = 0x400;
-    }
+use objc2::runtime::{ProtocolObject};
+use objc2::{declare_class, msg_send_id, sel};
+use objc2::rc::Retained;
+use objc2_app_kit::{NSApplication, NSApplicationActivationPolicy, NSApplicationDelegate, NSBackingStoreType, NSBezierPath, NSColor, NSMenu, NSMenuItem, NSTrackingArea, NSTrackingAreaOptions, NSView, NSWindow, NSWindowStyleMask};
+use objc2::mutability;
+use objc2::ClassType;
+use objc2::DeclaredClass;
+use objc2_foundation::{MainThreadMarker, NSObject, NSObjectProtocol, NSPoint, NSRect, NSSize, NSString};
+
+struct MyViewIvars {
+    is_mouse_down: bool,
+    is_hovering: bool,
 }
 
-#[allow(non_snake_case)]
-trait NSTrackingArea: Sized {
-    unsafe fn alloc(_: Self) -> id {
-        msg_send![class!(NSTrackingArea), alloc]
+declare_class!(
+    struct MyView;
+
+    unsafe impl ClassType for MyView {
+        type Super = NSView;
+        type Mutability = mutability::MainThreadOnly;
+        const NAME: &'static str = "MyView";
     }
 
-    unsafe fn initWithRect_options_owner_userInfo_(self, rect: NSRect, options: NSTrackingAreaOptions, owner: id, userInfo: id) -> id;
-}
-
-#[allow(non_snake_case)]
-impl NSTrackingArea for id {
-    unsafe fn initWithRect_options_owner_userInfo_(self, rect: NSRect, options: NSTrackingAreaOptions, owner: id, userInfo: id) -> id {
-        msg_send![self, initWithRect:rect options:options owner:owner userInfo:userInfo]
+    impl DeclaredClass for MyView {
+        type Ivars = RefCell<MyViewIvars>;
     }
-}
 
-extern "C" fn my_view_init_with_frame(this: &mut Object, _cmd: Sel, frame: NSRect) -> id {
-    unsafe {
-        let this: id = msg_send![super(this, class!(NSView)), initWithFrame:frame];
-        if this != nil {
-            let tracking_area = NSTrackingArea::alloc(nil).initWithRect_options_owner_userInfo_(
-                frame,
+    unsafe impl MyView {
+        #[method(drawRect:)]
+        fn draw_rect(&self, rect: NSRect) {
+            unsafe {
+                if self.ivars().borrow().is_mouse_down {
+                    NSColor::redColor().set();
+                } else if self.ivars().borrow().is_hovering {
+                    NSColor::purpleColor().set();
+                } else {
+                    NSColor::blueColor().set();
+                }
+                NSBezierPath::fillRect(rect);
+            }
+        }
+
+        #[method(mouseDown:)]
+        fn mouse_down(&self, _event: *mut NSObject) {
+            self.ivars().borrow_mut().is_mouse_down = true;
+            unsafe {
+                self.setNeedsDisplay(true);
+            }
+        }
+
+        #[method(mouseUp:)]
+        fn mouse_up(&self, _event: *mut NSObject) {
+            self.ivars().borrow_mut().is_mouse_down = false;
+            unsafe {
+                self.setNeedsDisplay(true);
+            }
+        }
+
+        #[method(mouseEntered:)]
+        fn mouse_entered(&self, _event: *mut NSObject) {
+            self.ivars().borrow_mut().is_hovering = true;
+            unsafe {
+                self.setNeedsDisplay(true);
+            }
+        }
+
+        #[method(mouseExited:)]
+        fn mouse_exited(&self, _event: *mut NSObject) {
+            self.ivars().borrow_mut().is_hovering = false;
+            unsafe {
+                self.setNeedsDisplay(true);
+            }
+        }
+    }
+);
+
+impl MyView {
+    fn new(mtm: MainThreadMarker, frame: NSRect) -> Retained<Self> {
+        let this = mtm.alloc().set_ivars(RefCell::new(MyViewIvars {
+            is_mouse_down: false,
+            is_hovering: false,
+        }));
+
+        let this: Retained<MyView> = unsafe { msg_send_id![super(this), initWithFrame:frame] };
+
+        let tracking_area = unsafe {
+            NSTrackingArea::initWithRect_options_owner_userInfo(
+                mtm.alloc(),
+                NSRect::new(NSPoint::new(0.0, 0.0), NSSize::new(0.0, 0.0)),
                 // InVisibleRect makes the tracking area ignore self.rect and use the view's visibleRect instead. This means we don't have to
                 // implement updateTrackingAreas to keep the tracking area's rect in sync with the view's frame.
-                NSTrackingAreaOptions::MouseEnteredAndExited | NSTrackingAreaOptions::ActiveInKeyWindow | NSTrackingAreaOptions::InVisibleRect,
-                this,
-                nil,
-            );
-            let _: () = msg_send![this, addTrackingArea:tracking_area];
-        }
-        this
-    }
-}
-
-#[allow(non_snake_case)]
-trait MyView: Sized {
-    unsafe fn alloc(_: Self) -> id {
-        msg_send![my_view_class(), alloc]
-    }
-}
-
-impl MyView for id {}
-
-extern "C" fn my_view_draw_rect(this: &Object, _cmd: Sel, _rect: NSRect) {
-    unsafe {
-        let color: id = if msg_send![this, isMouseDown] {
-            msg_send![class!(NSColor), redColor]
-        } else if msg_send![this, isHovering] {
-            msg_send![class!(NSColor), purpleColor]
-        } else {
-            msg_send![class!(NSColor), blueColor]
+                NSTrackingAreaOptions::NSTrackingMouseEnteredAndExited |
+                    NSTrackingAreaOptions::NSTrackingActiveAlways | 
+                    NSTrackingAreaOptions::NSTrackingInVisibleRect,
+                Some(&*this),
+                None,
+            )
         };
-        let _: id = msg_send![color, set];
-        let path: id = msg_send![class!(NSBezierPath), bezierPathWithRect: _rect];
-        let _: id = msg_send![path, fill];
+
+        unsafe { this.addTrackingArea(&tracking_area); }
+
+        return this;
     }
 }
 
-extern "C" fn my_view_mouse_down(this: &mut Object, _cmd: Sel, _event: id) {
-    unsafe {
-        let _: () = msg_send![this, setMouseIsDown: YES];
-        let _: () = msg_send![this, setNeedsDisplay: YES];
-    }
+struct AppDelegateIvars {
+    window: OnceCell<Retained<NSWindow>>,
 }
 
-extern "C" fn my_view_mouse_up(this: &mut Object, _cmd: Sel, _event: id) {
-    unsafe {
-        let _: () = msg_send![this, setMouseIsDown: NO];
-        let _: () = msg_send![this, setNeedsDisplay: YES];
+declare_class!(
+    struct AppDelegate;
+
+    unsafe impl ClassType for AppDelegate {
+        type Super = NSObject;
+        type Mutability = mutability::MainThreadOnly;
+        const NAME: &'static str = "AppDelegate";
     }
-}
 
-extern "C" fn my_view_mouse_entered(this: &mut Object, _cmd: Sel, _event: id) {
-    unsafe {
-        let _: () = msg_send![this, setIsHovering: YES];
-        let _: () = msg_send![this, setNeedsDisplay: YES];
+    impl DeclaredClass for AppDelegate {
+        type Ivars = AppDelegateIvars;
     }
-}
 
-extern "C" fn my_view_mouse_exited(this: &mut Object, _cmd: Sel, _event: id) {
-    unsafe {
-        let _: () = msg_send![this, setIsHovering: NO];
-        let _: () = msg_send![this, setNeedsDisplay: YES];
-    }
-}
+    unsafe impl NSObjectProtocol for AppDelegate {}
 
-extern "C" fn my_view_is_mouse_down(this: &Object, _cmd: Sel) -> BOOL {
-    unsafe {
-        *this.get_ivar("isMouseDown")
-    }
-}
+    unsafe impl NSApplicationDelegate for AppDelegate {
+        #[method(applicationDidFinishLaunching:)]
+        fn application_did_finish_launching(&self, _notification: *mut NSObject) {
+            let mtm = MainThreadMarker::from(self);
 
-extern "C" fn my_view_set_is_mouse_down(this: &mut Object, _cmd: Sel, value: BOOL) {
-    unsafe {
-        this.set_ivar("isMouseDown", value);
-    }
-}
+            let app = NSApplication::sharedApplication(mtm);
+            app.setActivationPolicy(NSApplicationActivationPolicy::Regular);    
+            unsafe { app.activate(); }
 
-extern "C" fn my_view_is_hovering(this: &Object, _cmd: Sel) -> BOOL {
-    unsafe {
-        *this.get_ivar("isHovering")
-    }
-}
+            let main_menu = NSMenu::new(mtm);
+            let app_menu_item = NSMenuItem::new(mtm);
+            main_menu.addItem(&app_menu_item);
 
-extern "C" fn my_view_set_is_hovering(this: &mut Object, _cmd: Sel, value: BOOL) {
-    unsafe {
-        this.set_ivar("isHovering", value);
-    }
-}
+            let app_menu = NSMenu::new(mtm);
+            let quit_item = NSMenuItem::new(mtm);
+            unsafe {
+                quit_item.setTitle(&NSString::from_str("Quit CocoaDrawRust"));
+                quit_item.setAction(Some(sel!(terminate:)));
+                quit_item.setKeyEquivalent(&NSString::from_str("q"));
+            }
+            app_menu.addItem(&quit_item);
+            app_menu_item.setSubmenu(Some(&app_menu));
+            app.setMainMenu(Some(&main_menu));
 
-extern "C" fn my_view_class() -> *const Class {
-    static mut MY_VIEW_CLASS: *const Class = 0 as *const Class;
-    unsafe {
-        if MY_VIEW_CLASS.is_null() {
-            let superclass = class!(NSView);
-            let mut decl = ClassDecl::new("MyView", superclass).unwrap();
-            decl.add_ivar::<BOOL>("isMouseDown");
-            decl.add_method(sel!(isMouseDown), my_view_is_mouse_down as extern "C" fn(&Object, Sel) -> BOOL);
-            decl.add_method(sel!(setMouseIsDown:), my_view_set_is_mouse_down as extern "C" fn(&mut Object, Sel, BOOL));
+            let window = unsafe {
+                NSWindow::initWithContentRect_styleMask_backing_defer(
+                    mtm.alloc(),
+                    NSRect::new(NSPoint::new(0.0, 0.0), NSSize::new(800.0, 600.0)),
+                    NSWindowStyleMask::Closable | NSWindowStyleMask::Resizable | NSWindowStyleMask::Titled,
+                    NSBackingStoreType::NSBackingStoreBuffered,
+                    false,
+                )
+            };
+            window.setTitle(&NSString::from_str("CocoaDrawRust"));
 
-            decl.add_ivar::<BOOL>("isHovering");
-            decl.add_method(sel!(isHovering), my_view_is_hovering as extern "C" fn(&Object, Sel) -> BOOL);
-            decl.add_method(sel!(setIsHovering:), my_view_set_is_hovering as extern "C" fn(&mut Object, Sel, BOOL));
-            
-            decl.add_method(sel!(initWithFrame:), my_view_init_with_frame as extern "C" fn(&mut Object, Sel, NSRect) -> id);
-            decl.add_method(sel!(drawRect:), my_view_draw_rect as extern "C" fn(&Object, Sel, NSRect));
-            decl.add_method(sel!(mouseDown:), my_view_mouse_down as extern "C" fn(&mut Object, Sel, id));
-            decl.add_method(sel!(mouseUp:), my_view_mouse_up as extern "C" fn(&mut Object, Sel, id));
-            decl.add_method(sel!(mouseEntered:), my_view_mouse_entered as extern "C" fn(&mut Object, Sel, id));
-            decl.add_method(sel!(mouseExited:), my_view_mouse_exited as extern "C" fn(&mut Object, Sel, id));
-            MY_VIEW_CLASS = decl.register();
+            // Frame size doesn't matter. NSWindow updates the size of its content view to match its size.
+            let view = MyView::new(mtm, NSRect::new(NSPoint::new(0.0, 0.0), NSSize::new(0.0, 0.0)));
+            window.setContentView(Some(&view));
+
+            window.center();
+            window.makeKeyAndOrderFront(None);
+
+            self.ivars().window.set(window).unwrap();
         }
-        MY_VIEW_CLASS
+    }
+);
+
+impl AppDelegate {
+    fn new(mtm: MainThreadMarker) -> Retained<Self> {
+        let this = mtm.alloc().set_ivars(AppDelegateIvars {
+            window: OnceCell::new(),
+        });
+        unsafe { msg_send_id![super(this), init] }
     }
 }
 
 fn main() {
-    unsafe {
-        let _pool = NSAutoreleasePool::new(nil);
-        let app = NSApp();
-        app.setActivationPolicy_(NSApplicationActivationPolicy::NSApplicationActivationPolicyRegular);
-
-
-        let menubar = NSMenu::new(nil).autorelease();
-        let app_menu_item = NSMenuItem::new(nil).autorelease();
-        menubar.addItem_(app_menu_item);
-        app.setMainMenu_(menubar);
-
-        let app_menu = NSMenu::new(nil).autorelease();
-        let quit_title = NSString::alloc(nil).init_str("Quit CocoaDrawRust");
-        let quit_action = sel!(terminate:);
-        let quit_key = NSString::alloc(nil).init_str("q");
-        let quit_item = NSMenuItem::alloc(nil).initWithTitle_action_keyEquivalent_(quit_title, quit_action, quit_key).autorelease();
-        app_menu.addItem_(quit_item);
-        app_menu_item.setSubmenu_(app_menu);
-
-        let window = NSWindow::alloc(nil).initWithContentRect_styleMask_backing_defer_(
-            NSRect::new(NSPoint::new(0.0, 0.0), NSSize::new(800.0, 600.0)),
-            NSWindowStyleMask::NSTitledWindowMask | NSWindowStyleMask::NSClosableWindowMask | NSWindowStyleMask::NSResizableWindowMask,
-            NSBackingStoreType::NSBackingStoreBuffered,
-            NO,
-        ).autorelease();
-
-        window.setTitle_(NSString::alloc(nil).init_str("Hello, World!"));
-
-        // Frame size doesn't matter. NSWindow updates the size of its content view to match its size.
-        let v = MyView::alloc(nil).initWithFrame_(NSRect::new(NSPoint::new(0.0, 0.0), NSSize::new(0.0, 0.0)));
-        window.setContentView_(v);
-
-        window.center();
-        window.makeKeyAndOrderFront_(nil);
-
-        app.run();
-    }
+    let mtm = MainThreadMarker::new().unwrap();
+    let app = NSApplication::sharedApplication(mtm);
+    let delegate = AppDelegate::new(mtm);
+    app.setDelegate(Some(ProtocolObject::from_ref(&*delegate)));
+    unsafe { app.run(); }
 }
