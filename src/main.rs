@@ -43,7 +43,7 @@ extern "C" fn my_view_init_with_frame(this: &mut Object, _cmd: Sel, frame: NSRec
         if this != nil {
             let tracking_area = NSTrackingArea::alloc(nil).initWithRect_options_owner_userInfo_(
                 frame,
-                // InVisibleRect makes the tracking area ignore `rect` and use the view's visibleRect instead. This means we don't have to
+                // InVisibleRect makes the tracking area ignore self.rect and use the view's visibleRect instead. This means we don't have to
                 // implement updateTrackingAreas to keep the tracking area's rect in sync with the view's frame.
                 NSTrackingAreaOptions::MouseEnteredAndExited | NSTrackingAreaOptions::ActiveInKeyWindow | NSTrackingAreaOptions::InVisibleRect,
                 this,
