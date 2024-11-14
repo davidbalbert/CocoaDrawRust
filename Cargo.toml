@@ -4,6 +4,7 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
+bitflags = "2.6.0"
 cocoa = "0.26.0"
 core-foundation = "0.10.0"
 objc = "0.2.7"

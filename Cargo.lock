@@ -6,6 +6,7 @@ version = 3
 name = "CocoaDraw"
 version = "0.1.0"
 dependencies = [
+ "bitflags",
  "cocoa",
  "core-foundation",
  "objc",
