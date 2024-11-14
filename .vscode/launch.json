@@ -7,15 +7,15 @@
         {
             "type": "lldb",
             "request": "launch",
-            "name": "Debug executable 'cocoa-draw'",
+            "name": "Debug executable 'CocoaDraw'",
             "cargo": {
                 "args": [
                     "build",
-                    "--bin=cocoa-draw",
-                    "--package=cocoa-draw"
+                    "--bin=CocoaDraw",
+                    "--package=CocoaDraw"
                 ],
                 "filter": {
-                    "name": "cocoa-draw",
+                    "name": "CocoaDraw",
                     "kind": "bin"
                 }
             },
@@ -25,16 +25,16 @@
         {
             "type": "lldb",
             "request": "launch",
-            "name": "Debug unit tests in executable 'cocoa-draw'",
+            "name": "Debug unit tests in executable 'CocoaDraw'",
             "cargo": {
                 "args": [
                     "test",
                     "--no-run",
-                    "--bin=cocoa-draw",
-                    "--package=cocoa-draw"
+                    "--bin=CocoaDraw",
+                    "--package=CocoaDraw"
                 ],
                 "filter": {
-                    "name": "cocoa-draw",
+                    "name": "CocoaDraw",
                     "kind": "bin"
                 }
             },
