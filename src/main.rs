@@ -168,7 +168,7 @@ fn main() {
         app.setMainMenu_(menubar);
 
         let app_menu = NSMenu::new(nil).autorelease();
-        let quit_title = NSString::alloc(nil).init_str("Quit");
+        let quit_title = NSString::alloc(nil).init_str("Quit CocoaDrawRust");
         let quit_action = sel!(terminate:);
         let quit_key = NSString::alloc(nil).init_str("q");
         let quit_item = NSMenuItem::alloc(nil).initWithTitle_action_keyEquivalent_(quit_title, quit_action, quit_key).autorelease();
