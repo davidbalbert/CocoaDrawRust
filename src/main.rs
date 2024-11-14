@@ -184,7 +184,8 @@ fn main() {
 
         window.setTitle_(NSString::alloc(nil).init_str("Hello, World!"));
 
-        let v = MyView::alloc(nil).initWithFrame_(NSRect::new(NSPoint::new(0.0, 0.0), NSSize::new(800.0, 600.0)));
+        // Frame size doesn't matter. NSWindow updates the size of its content view to match its size.
+        let v = MyView::alloc(nil).initWithFrame_(NSRect::new(NSPoint::new(0.0, 0.0), NSSize::new(0.0, 0.0)));
         window.setContentView_(v);
 
         window.center();
